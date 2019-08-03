@@ -52,16 +52,16 @@ impl Grid {
         faces.reserve((nverts - 1) * (nverts - 1));
 
         // verts
-        for i in 0..nverts {
-            for j in 0..nverts {
+        for j in 0..nverts {
+            for i in 0..nverts {
                 verts.push(Vert{sdf: 0.0, 
                                 pos: Vector2::new(i as f32, j as f32)});
             }
         }
 
         // horizontal edges
-        for i in 0..nverts-1 {
-            for j in 0..nverts {
+        for j in 0..nverts {
+            for i in 0..nverts-1 {
                 let vert_index = i + nverts * j;
                 edges.push(Edge{pos: Vector2::new(0.0, 0.0), 
                                 normal: Vector2::new(0.0, 0.0), 
@@ -71,8 +71,8 @@ impl Grid {
         }
 
         // vertical edges
-        for i in 0..nverts {
-            for j in 0..nverts-1 {
+        for j in 0..nverts-1 {
+            for i in 0..nverts {
                 let vert_index = i + nverts * j;
                 edges.push(Edge{pos: Vector2::new(0.0, 0.0), 
                                 normal: Vector2::new(0.0, 0.0), 
@@ -82,12 +82,13 @@ impl Grid {
         }
 
         // faces
-        for i in 0..nverts-1 {
-            for j in 0..nverts-1 {
+        for j in 0..nverts-1 {
+            for i in 0..nverts-1 {
                 let vert_index = i + nverts * j;
+                let edge_index = i + (nverts - 1) * j;
                 faces.push(Face{internal_vertex: Vector2::new(0.0, 0.0),
                                 has_vertex: false,
-                                edges: [vert_index, vert_index + nverts - 1,
+                                edges: [edge_index, edge_index + nverts - 1,
                                         (nverts * (nverts - 1)) + vert_index, 
                                         (nverts * (nverts - 1) + vert_index + 1)],
                 });
@@ -139,7 +140,7 @@ impl Grid {
                     }
                 }
                 e.pos = v1.pos + vector * midoffset;
-                println!("MIDPOS: {}", e.pos);
+                //println!("MIDPOS: {}", e.pos);
             }
 
             e.normal = Vector2::new(sdf(e.pos + (Vector2::x() * 0.01)) - sdf(e.pos - (Vector2::x() * 0.01)), 
@@ -190,6 +191,21 @@ impl Grid {
         }
     }
 
+    fn draw_edge(&self, canvas: &mut Canvas<Window>, e: &Edge) {
+        let v1 = self.verts[e.vert_index[0]].pos * 30.0;
+        let v2 = self.verts[e.vert_index[1]].pos * 30.0;
+        //println!("A: {}, B: {}", v1, v2);
+        canvas.draw_line((v1.x as i32, v1.y as i32),
+                         (v2.x as i32, v2.y as i32)).expect("bad line");
+    }
+
+    fn draw_face(&self, canvas: &mut Canvas<Window>, f: &Face) {
+        self.draw_edge(canvas, &self.edges[f.edges[0]]);
+        self.draw_edge(canvas, &self.edges[f.edges[1]]);
+        self.draw_edge(canvas, &self.edges[f.edges[2]]);
+        self.draw_edge(canvas, &self.edges[f.edges[3]]);
+    }
+
     fn draw_points(&self, canvas: &mut Canvas<Window>) {
         for v in &self.verts {
             canvas.set_draw_color(Color::RGB(0, 255, 0));
@@ -214,6 +230,9 @@ impl Grid {
         }
 
         for f in &self.faces {
+            //let f = &self.faces[i];
+            canvas.set_draw_color(Color::RGB(255, 0, 255));
+            //self.draw_face(canvas, f);
             if f.has_vertex {
                 canvas.set_draw_color(Color::RGB(255, 0, 255));
                 let point = f.internal_vertex * 30.0;
