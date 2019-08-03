@@ -1,6 +1,7 @@
 extern crate sdl2;
 extern crate gl;
 extern crate nalgebra;
+extern crate rand;
 
 use sdl2::pixels::Color;
 use sdl2::render::Canvas;
@@ -33,6 +34,7 @@ struct Edge {
 
     //
     vert_index: [usize; 2],
+    face_index: [Option<usize>; 2],
 }
 
 struct Grid {
@@ -63,10 +65,21 @@ impl Grid {
         for j in 0..nverts {
             for i in 0..nverts-1 {
                 let vert_index = i + nverts * j;
+                
+                // we might not have a face on either side...
+                let top_face_index: Option<usize> = if j > 0 { 
+                    Some(i + (nverts - 1) * (j - 1))
+                } else { None };
+
+                let bottom_face_index: Option<usize> = if j < nverts - 1 {
+                    Some(i + (nverts - 1) * j)
+                } else { None };
+
                 edges.push(Edge{pos: Vector2::new(0.0, 0.0), 
                                 normal: Vector2::new(0.0, 0.0), 
                                 crossed: false,
-                                vert_index: [vert_index, vert_index+1]});
+                                vert_index: [vert_index, vert_index+1],
+                                face_index: [top_face_index, bottom_face_index]});
             }
         }
 
@@ -74,10 +87,21 @@ impl Grid {
         for j in 0..nverts-1 {
             for i in 0..nverts {
                 let vert_index = i + nverts * j;
+
+                // we might not have a face on either side...
+                let left_face_index: Option<usize> = if i > 0 { 
+                    Some(i - 1 + (nverts - 1) * j)
+                } else { None };
+
+                let right_face_index: Option<usize> = if i < nverts - 1 {
+                    Some(i + (nverts - 1) * j)
+                } else { None };
+
                 edges.push(Edge{pos: Vector2::new(0.0, 0.0), 
                                 normal: Vector2::new(0.0, 0.0), 
                                 crossed: false,
-                                vert_index: [vert_index, vert_index+nverts]});
+                                vert_index: [vert_index, vert_index+nverts],
+                                face_index: [left_face_index, right_face_index]});
             }
         }
 
@@ -199,6 +223,14 @@ impl Grid {
                          (v2.x as i32, v2.y as i32)).expect("bad line");
     }
 
+    fn draw_line(&self, canvas: &mut Canvas<Window>, v1: Vector2<f32>, v2: Vector2<f32>) {
+        let v1i = v1 * 30.0;
+        let v2i = v2 * 30.0;
+        //println!("A: {}, B: {}", v1, v2);
+        canvas.draw_line((v1i.x as i32, v1i.y as i32),
+                         (v2i.x as i32, v2i.y as i32)).expect("bad line");
+    }
+
     fn draw_face(&self, canvas: &mut Canvas<Window>, f: &Face) {
         self.draw_edge(canvas, &self.edges[f.edges[0]]);
         self.draw_edge(canvas, &self.edges[f.edges[1]]);
@@ -224,19 +256,30 @@ impl Grid {
 
             let point = e.pos * 30.0;
             canvas.draw_point((point.x as i32, point.y as i32)).expect("bad edge");
+            /*
             canvas.draw_line((point.x as i32, point.y as i32),
                              ((point.x + e.normal.x * 5.0) as i32,
                               (point.y + e.normal.y * 5.0) as i32)).expect("bad line");
+                              */
+
+            if e.face_index[0].is_some() && e.face_index[1].is_some() {
+                canvas.set_draw_color(Color::RGB(255, 255, 255));
+                let face1 = &self.faces[e.face_index[0].unwrap()];
+                let face2 = &self.faces[e.face_index[1].unwrap()];
+                self.draw_line(canvas, face1.internal_vertex, face2.internal_vertex);
+            }
         }
 
         for f in &self.faces {
             //let f = &self.faces[i];
             canvas.set_draw_color(Color::RGB(255, 0, 255));
-            //self.draw_face(canvas, f);
+            if rand::random::<u8>() > 250 {
+                //self.draw_face(canvas, f);
+            }
             if f.has_vertex {
                 canvas.set_draw_color(Color::RGB(255, 0, 255));
                 let point = f.internal_vertex * 30.0;
-                canvas.fill_rect(Rect::new(point.x as i32 - 2, point.y as i32 - 2, 4, 4)).expect("bad face");
+                //canvas.fill_rect(Rect::new(point.x as i32 - 2, point.y as i32 - 2, 4, 4)).expect("bad face");
             }
         }
     }
@@ -279,5 +322,50 @@ fn main() {
 
         grid.draw_points(&mut canvas);
         canvas.present();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_grid_indices() {
+        let mut grid = Grid::new(4);
+        assert_eq!(grid.verts.len(), 16);
+        assert_eq!(grid.edges.len(), 24);
+        assert_eq!(grid.faces.len(), 9);
+
+        for i in 0..3 {
+            assert_eq!(grid.edges[i].face_index[0], None);
+        }
+
+        for i in 9..12 {
+            assert_eq!(grid.edges[i].face_index[1], None);
+        }
+
+        for i in 0..9 {
+            assert_eq!(grid.edges[i].face_index[1], Some(i));
+        }
+
+        // check horizontal edges
+        for (e, t, b) in [(0, None, Some(0)), (1, None, Some(1)), (2, None, Some(2)), 
+            (3, Some(0), Some(3)), (4, Some(1), Some(4)), (5, Some(2), Some(5)), 
+            (6, Some(3), Some(6)), (7, Some(4), Some(7)), (8, Some(5), Some(8)), 
+            (9, Some(6), None), (10, Some(7), None), (11, Some(8), None)].iter() {
+            assert_eq!(grid.edges[*e as usize].face_index[0], *t);
+            assert_eq!(grid.edges[*e as usize].face_index[1], *b);
+        }
+
+        // check vertical edges
+        for (e, l, r) in [(12, None, Some(0)), (13, Some(0), Some(1)), 
+                (14, Some(1), Some(2)), (15, Some(2), None),
+            (16, None, Some(3)), (17, Some(3), Some(4)), 
+                (18, Some(4), Some(5)), (19, Some(5), None),
+            (20, None, Some(6)), (21, Some(6), Some(7)),
+                (22, Some(7), Some(8)), (23, Some(8), None)].iter() {
+            assert_eq!(grid.edges[*e as usize].face_index[0], *l);
+            assert_eq!(grid.edges[*e as usize].face_index[1], *r);
+        }
     }
 }
