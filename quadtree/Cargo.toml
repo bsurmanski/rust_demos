@@ -1,0 +1,12 @@
+[package]
+name = "quadtree"
+version = "0.1.0"
+authors = ["Brandon Surmanski <b.surmanski@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+sdl2 = {version = "0.32.1", features = ["bundled"]}
+gl = {version = "0.10.0"}
+nalgebra = "0.16.13"
+rand = "0.7.0"
+arrayvec = "0.4.11"
