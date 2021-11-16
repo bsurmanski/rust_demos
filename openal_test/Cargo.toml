@@ -1,0 +1,8 @@
+[package]
+name = "openal_test"
+version = "0.1.0"
+authors = ["Brandon Surmanski <b.surmanski@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+alto = "3.0.3"
