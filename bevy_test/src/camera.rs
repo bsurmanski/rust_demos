@@ -49,7 +49,6 @@ fn update_camera(
         .translation
         .clone();
     for (_, mut cam_tf) in q.q0_mut().iter_mut() {
-        println!("{:?}", attention_translation);
-        cam_tf.translation = attention_translation.add(Vec3::new(0.0, 0.0, 800.0));
+        cam_tf.translation = attention_translation.add(Vec3::new(0.0, 0.0, 100.0));
     }
 }

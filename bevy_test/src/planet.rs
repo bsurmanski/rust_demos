@@ -7,10 +7,23 @@ use std::time::Duration;
 
 use crate::physics_object::*;
 
+struct PlanetaryConstants {
+    // Distance for gravity to falloff 50%.
+    // Measured as a ratio of the planet's radius.
+    // The realistic value would be 1.41 (sqrt(2))
+    // But with tiny planets this tends to feel way too quick.
+    gravity_falloff_ratio: f32,
+}
+
 pub struct PlanetaryPlugin;
 impl Plugin for PlanetaryPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_system(apply_planetary_gravity.system())
+        let constants = PlanetaryConstants {
+            gravity_falloff_ratio: 2.,
+        };
+
+        app.insert_resource(constants)
+            .add_system(apply_planetary_gravity.system())
             //.add_system(dolly_planet.system())
             .add_system(orbit_satellites.system());
     }
@@ -50,7 +63,12 @@ impl Orbit {
         }
     }
 
-    pub fn new_elliptical(periapsis: f32, apoapsis: f32, major_orient: Vec2, period: Duration) -> Self {
+    pub fn new_elliptical(
+        periapsis: f32,
+        apoapsis: f32,
+        major_orient: Vec2,
+        period: Duration,
+    ) -> Self {
         let orient = major_orient.try_normalize().unwrap_or(Vec2::new(1., 0.));
         Self {
             periapsis,
@@ -58,13 +76,15 @@ impl Orbit {
             major_orient: orient,
             minor_orient: Vec2::new(orient.y, -orient.x), // TODO: assumes orbit is clockwise
             period,
-        } 
+        }
     }
 
     // Average orbital motion in radians per second.
     pub fn mean_motion(&self) -> f32 {
         let period_secs = self.period.as_secs() as f32;
-        if period_secs <= f32::EPSILON { return 0. }
+        if period_secs <= f32::EPSILON {
+            return 0.;
+        }
         return f32::consts::TAU / self.period.as_secs() as f32;
     }
 
@@ -77,7 +97,9 @@ impl Orbit {
     // From: https://en.wikipedia.org/wiki/Orbital_eccentricity
     pub fn eccentricity(&self) -> f32 {
         let denom = self.apoapsis + self.periapsis;
-        if denom < f32::EPSILON {return 0.}
+        if denom < f32::EPSILON {
+            return 0.;
+        }
         return (self.apoapsis - self.periapsis) / denom;
     }
 
@@ -99,7 +121,7 @@ impl Orbit {
         let anomaly = self.mean_anomaly(t); // TODO: use true anomaly
 
         // the origin is at the primary focus; Not at the center of the ellipse.
-        let focus_offset = (self.apoapsis - self.periapsis) * self.major_orient;
+        let focus_offset = (self.periapsis - self.apoapsis) / 2. * self.major_orient;
         return focus_offset
             + (anomaly.cos() * self.major_radius() * self.major_orient)
             + (anomaly.sin() * self.minor_radius() * self.minor_orient);
@@ -152,20 +174,29 @@ impl PlanetBundle {
     }
 }
 
+// Orbit satellite planets. Anything with an 'Orbit'.
 fn orbit_satellites(
     time: Res<Time>,
-    mut q: Query<(&Planet, &Orbit, &Transform, &mut RigidBodyVelocity, &RigidBodyMassProps)>,
+    mut q: Query<(
+        &Orbit,
+        &Transform,
+        &mut RigidBodyVelocity
+    )>,
 ) {
-    for (planet, orbit, planet_tf, mut rb_vel, rb_mp) in q.iter_mut() {
+    for (orbit, planet_tf, mut rb_vel) in q.iter_mut() {
         let target_pos = orbit.get_position(time.time_since_startup());
-        //rb_vel.apply_impulse
         let delta = target_pos - planet_tf.translation.xy();
         rb_vel.linvel = Vector::<Real>::from(delta);
-        //println!("{:?}", pos);
     }
 }
 
+// Some influence is taken from lighting calculations.
+// See: https://imdoingitwrong.wordpress.com/2011/01/31/light-attenuation/
+// and: https://gamedev.stackexchange.com/questions/131372/light-attenuation-formula-derivation
+// and: https://docs.blender.org/manual/en/2.79/render/blender_render/lighting/lights/attenuation.html
 fn apply_planetary_gravity(
+    time: Res<Time>,
+    constants: Res<PlanetaryConstants>,
     mut q0: Query<(&mut RigidBodyVelocity, &Transform), With<Gravity>>,
     q1: Query<(&Planet, &Transform)>,
 ) {
@@ -173,11 +204,21 @@ fn apply_planetary_gravity(
         let mut gravity_vec = Vec2::ZERO;
         for (planet, planet_tf) in q1.iter() {
             let offset = planet_tf.translation.xy() - rb_tf.translation.xy();
-            gravity_vec += offset.normalize_or_zero() * planet.gravity;
+            let dist = offset.length();
+            // biased dist so planet's surface has target gravity.
+            let surf_dist = 0f32.max(dist - planet.radius);
+            let falloff_dist = planet.radius * constants.gravity_falloff_ratio;
+            let falloff_distsq = falloff_dist * falloff_dist;
+            // let radius_dist = dist / planet.radius;
+            // let attenuation = 1. / (radius_dist * radius_dist).max(1.);
+            //TODO: design attenuation so that the orbits don't violate Bertrand's Theorem:
+            // https://en.wikipedia.org/wiki/Bertrand%27s_theorem
+            // I think I'd have to use 1/r^2 with only scaling and offset.
+            // probably something in the form of: (k / (x+c)^2).
+            let attenuation = falloff_distsq / (falloff_distsq + surf_dist * surf_dist);
+            gravity_vec += offset.normalize_or_zero() * planet.gravity * attenuation;
         }
-
-        gravity_vec *= 0.01; //TODO
-
+        gravity_vec *= time.delta_seconds();
         rb_vel.linvel += Vector::<Real>::from(gravity_vec);
     }
 }
