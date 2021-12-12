@@ -14,6 +14,7 @@ use crate::ship::ShipBundle;
 
 fn main() {
     App::build()
+        .insert_resource(Msaa { samples: 4 })
         .add_plugins(DefaultPlugins)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierRenderPlugin)
@@ -33,13 +34,15 @@ fn setup(
     mut config: ResMut<RapierConfiguration>,
 ) {
     //config.scale = 10.0;
+
     config.gravity = vector![0.0, 0.0];
     ambient_light.color = Color::WHITE;
     ambient_light.brightness = 1.0;
     commands.insert_resource(ClearColor(Color::rgb(0.4, 0.6, 0.9)));
+
     commands
         .spawn_bundle(ShipBundle::new_from_xy(10.0, 11.0))
-        .insert(crate::camera::CameraAttention {})
+        //.insert(crate::camera::CameraAttention {})
         .with_children(|parent| {
             parent.spawn_scene(asset_server.load("ship.gltf#Scene0"));
         });
@@ -61,11 +64,24 @@ fn setup(
                 .insert_bundle(PbrBundle {
                     mesh: asset_server.load("planet.gltf#Mesh0/Primitive0"),
                     material: asset_server.load("planet.gltf#Material0"),
-                    transform: Transform::from_scale(Vec3::new(scale, scale, scale)),
+                    transform: Transform::from_scale(vec3(scale, scale, scale)),
                     ..Default::default()
                 });  */
         });
 
+    /*
+    commands
+        .spawn_bundle(
+            SvgBuilder::from_file("assets/test.svg")
+                .origin(Origin::TopLeft)
+                .position(vec3(0., 0., 0.))
+                .build()
+                .expect("File not found"),
+        )
+        .insert(crate::camera::CameraAttention {}); */
+
     let sprite = materials.add(asset_server.load("happy.png").into());
-    commands.spawn_bundle(CharacterBundle::new(sprite));
+    commands
+        .spawn_bundle(CharacterBundle::new(vec2(11., 0.), sprite))
+        .insert(crate::camera::CameraAttention {});
 }

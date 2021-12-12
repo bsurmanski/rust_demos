@@ -1,13 +1,13 @@
 use bevy::{math::*, prelude::*};
 use bevy_rapier2d::prelude::*;
 
-use crate::planet::Gravity;
 use crate::physics_object::PhysicsObjectBundle;
+use crate::planet::Gravity;
 
 pub struct ShipPlugin;
 impl Plugin for ShipPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_system(move_ship.system());
+        app.add_system(move_active_ship.system());
     }
 }
 
@@ -40,28 +40,33 @@ impl ShipBundle {
     }
 }
 
-fn move_ship(
+// If the Character is in a ship, control it.
+fn move_active_ship(
     time: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<(&Ship, &Transform, &mut RigidBodyVelocity)>,
+    mut ship_query: Query<(&Ship, &Transform, &mut RigidBodyVelocity)>,
+    char_query: Query<&crate::character::Character>,
 ) {
-    for (_, ship_tf, mut rb_vel) in query.iter_mut() {
-        if keyboard_input.pressed(KeyCode::W) {
-            let fwd = ship_tf.rotation.mul_vec3(Vec3::new(0., 1., 0.));
-            rb_vel.linvel += Vector::<Real>::from(fwd.xy() * 0.3);
-        }
-        if keyboard_input.pressed(KeyCode::S) {
-            let bwd = ship_tf.rotation.mul_vec3(Vec3::new(0., -1., 0.));
-            rb_vel.linvel += Vector::<Real>::from(bwd.xy() * 0.3);
-        }
-        if keyboard_input.pressed(KeyCode::A) {
-            rb_vel.angvel += 10. * time.delta_seconds();
-        }
-        if keyboard_input.pressed(KeyCode::D) {
-            rb_vel.angvel -= 10. * time.delta_seconds();
-        }
-        if keyboard_input.pressed(KeyCode::F) {
-
+    let char = char_query.single().unwrap();
+    if let Some(active_vehicle) = char.active_vehicle {
+        match ship_query.get_mut(active_vehicle) {
+            Ok((_, ship_tf, mut rb_vel)) => {
+                if keyboard_input.pressed(KeyCode::W) {
+                    let fwd = ship_tf.rotation.mul_vec3(Vec3::new(0., 1., 0.));
+                    rb_vel.linvel += Vector::<Real>::from(fwd.xy() * 0.3);
+                }
+                if keyboard_input.pressed(KeyCode::S) {
+                    let bwd = ship_tf.rotation.mul_vec3(Vec3::new(0., -1., 0.));
+                    rb_vel.linvel += Vector::<Real>::from(bwd.xy() * 0.3);
+                }
+                if keyboard_input.pressed(KeyCode::A) {
+                    rb_vel.angvel += 10. * time.delta_seconds();
+                }
+                if keyboard_input.pressed(KeyCode::D) {
+                    rb_vel.angvel -= 10. * time.delta_seconds();
+                }
+            },
+            _ => {}
         }
     }
 }

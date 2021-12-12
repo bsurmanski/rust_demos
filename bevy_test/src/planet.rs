@@ -29,8 +29,22 @@ impl Plugin for PlanetaryPlugin {
     }
 }
 
-#[derive(Default)]
-pub struct Gravity; // Marker Component
+// An entity that is affected by gravity.
+pub struct Gravity
+{
+    pub is_active: bool,
+    pub down: Vec2,
+}
+
+impl Default for Gravity {
+    fn default() -> Self {
+        Self {
+            is_active: true,
+            down: vec2(0., -1.),
+        }
+    }
+}
+
 
 // TODO: allow phases other than periapsis at t=0
 // TODO: allow CCW orbits
@@ -197,10 +211,13 @@ fn orbit_satellites(
 fn apply_planetary_gravity(
     time: Res<Time>,
     constants: Res<PlanetaryConstants>,
-    mut q0: Query<(&mut RigidBodyVelocity, &Transform), With<Gravity>>,
+    mut q0: Query<(&mut RigidBodyVelocity, &Transform, &mut Gravity)>,
     q1: Query<(&Planet, &Transform)>,
 ) {
-    for (mut rb_vel, rb_tf) in q0.iter_mut() {
+    for (mut rb_vel, rb_tf, mut gravity) in q0.iter_mut() {
+        if !gravity.is_active {
+            continue;
+        }
         let mut gravity_vec = Vec2::ZERO;
         for (planet, planet_tf) in q1.iter() {
             let offset = planet_tf.translation.xy() - rb_tf.translation.xy();
@@ -218,6 +235,8 @@ fn apply_planetary_gravity(
             let attenuation = falloff_distsq / (falloff_distsq + surf_dist * surf_dist);
             gravity_vec += offset.normalize_or_zero() * planet.gravity * attenuation;
         }
+        gravity.down = gravity_vec;
+        gravity.down.normalize_or_zero();
         gravity_vec *= time.delta_seconds();
         rb_vel.linvel += Vector::<Real>::from(gravity_vec);
     }
