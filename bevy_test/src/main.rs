@@ -1,14 +1,14 @@
 use bevy::{math::*, pbr::AmbientLight, prelude::*};
 use bevy_rapier2d::prelude::*;
+use bevy_svg::prelude::*;
 use std::default::Default;
-use std::time::Duration;
 
 mod camera;
 mod character;
 mod physics_object;
 mod planet;
 mod ship;
-use crate::character::CharacterBundle;
+use crate::character::{CharacterBundle, CharacterAssets};
 use crate::planet::PlanetBundle;
 use crate::ship::ShipBundle;
 
@@ -18,23 +18,22 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierRenderPlugin)
+        .add_plugin(SvgPlugin)
         .add_plugin(crate::planet::PlanetaryPlugin)
         .add_plugin(crate::camera::CameraPlugin)
         .add_plugin(crate::ship::ShipPlugin)
         .add_plugin(crate::character::CharacterPlugin)
-        .add_startup_system(setup.system())
+        .add_startup_system_to_stage(StartupStage::PostStartup, setup.system())
         .run();
 }
 
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut ambient_light: ResMut<AmbientLight>,
     mut config: ResMut<RapierConfiguration>,
+    char_assets: Res<CharacterAssets>,
 ) {
-    //config.scale = 10.0;
-
     config.gravity = vector![0.0, 0.0];
     ambient_light.color = Color::WHITE;
     ambient_light.brightness = 1.0;
@@ -42,16 +41,27 @@ fn setup(
 
     commands
         .spawn_bundle(ShipBundle::new_from_xy(10.0, 11.0))
-        //.insert(crate::camera::CameraAttention {})
         .with_children(|parent| {
             parent.spawn_scene(asset_server.load("ship.gltf#Scene0"));
+            /*
+            parent.spawn_bundle(SvgBundle {
+                svg: asset_server.load("circle.svg"),
+                origin: Origin::Center,
+                ..Default::default()
+            });*/
         });
 
     let scale = 10.;
     commands
-        .spawn_bundle(PlanetBundle::new(scale, 10., Default::default()))
+        .spawn_bundle(PlanetBundle::new(scale, 15., Default::default()))
         .with_children(|parent| {
-            parent.spawn_scene(asset_server.load("big_planet.gltf#Scene0"));
+            parent.spawn_bundle(SvgBundle {
+                svg: asset_server.load("circle.svg"),
+                origin: Origin::Center,
+                transform: Transform::from_scale(vec3(scale, scale, scale)*2.),
+                ..Default::default()
+            });
+            //parent.spawn_scene(asset_server.load("big_planet.gltf#Scene0"));
 
             /*
             let scale = 5.;
@@ -68,20 +78,7 @@ fn setup(
                     ..Default::default()
                 });  */
         });
-
-    /*
     commands
-        .spawn_bundle(
-            SvgBuilder::from_file("assets/test.svg")
-                .origin(Origin::TopLeft)
-                .position(vec3(0., 0., 0.))
-                .build()
-                .expect("File not found"),
-        )
-        .insert(crate::camera::CameraAttention {}); */
-
-    let sprite = materials.add(asset_server.load("happy.png").into());
-    commands
-        .spawn_bundle(CharacterBundle::new(vec2(11., 0.), sprite))
+        .spawn_bundle(CharacterBundle::new(vec2(11., 0.), char_assets))
         .insert(crate::camera::CameraAttention {});
 }

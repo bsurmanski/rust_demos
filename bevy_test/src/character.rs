@@ -1,14 +1,31 @@
 use bevy::{math::*, prelude::*};
 use bevy_rapier2d::prelude::*;
+use std::default::Default;
 
 use crate::physics_object::PhysicsObjectBundle;
 use crate::planet::Gravity;
 use crate::ship::Ship;
 
+#[derive(Default)]
+pub struct CharacterAssets {
+    sprite: Handle<ColorMaterial>,
+}
+
+fn load_assets(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    commands.insert_resource(CharacterAssets {
+        sprite: materials.add(asset_server.load("happy.png").into()),
+    });
+}
+
 pub struct CharacterPlugin;
 impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut AppBuilder) {
-        app.add_system(move_character.system())
+        app.add_startup_system_to_stage(StartupStage::PreStartup, load_assets.system())
+            .add_system(move_character.system())
             .add_system(enter_exit_vehicle.system());
     }
 }
@@ -30,7 +47,7 @@ pub struct CharacterBundle {
 }
 
 impl CharacterBundle {
-    pub fn new(position: Vec2, material: Handle<ColorMaterial>) -> Self {
+    pub fn new(position: Vec2, assets: Res<CharacterAssets>) -> Self {
         let hx = 1.;
         let mut physics_object = PhysicsObjectBundle::new(ColliderShape::cuboid(hx, hx));
         physics_object.rigid_body.position = position.into();
@@ -42,13 +59,20 @@ impl CharacterBundle {
                     resize_mode: SpriteResizeMode::Manual,
                     ..Default::default()
                 },
-                material,
+                material: assets.sprite.clone(),
                 ..Default::default()
             },
             ..Default::default()
         }
     }
 }
+
+/*
+fn spawn_character(commands: Commands, materials: Res<Assets<ColorMaterial>>) {
+    commands
+        .spawn_bundle(CharacterBundle::new(vec2(11., 0.), sprite))
+        .insert(crate::camera::CameraAttention {});
+} */
 
 fn enter_exit_vehicle(
     keyboard_input: Res<Input<KeyCode>>,
@@ -145,7 +169,7 @@ fn move_character(
 ) {
     for (char, char_tf, mut rb_vel, opt_gravity) in characters.iter_mut() {
         // If in vehicle
-        if let Some(active_vehicle) = char.active_vehicle {
+        if let Some(_) = char.active_vehicle {
             //TODO: do i need to do anything here?
             //TODO: handle error
             //let (_, _, ship_tf) = vehicles.get(active_vehicle).unwrap();
