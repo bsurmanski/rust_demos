@@ -14,13 +14,18 @@ impl Plugin for CameraPlugin {
 #[derive(Default)]
 pub struct CameraAttention {}
 
-#[derive(Bundle)]
-pub struct GameCamera {
+#[derive(Default)]
+pub struct GameCamera {}
+
+#[derive(Default, Bundle)]
+pub struct GameCameraBundle {
     #[bundle]
     camera: PerspectiveCameraBundle,
+
+    game_camera: GameCamera, // marker component
 }
 
-impl GameCamera {
+impl GameCameraBundle {
     pub fn new() -> Self {
         Self {
             camera: PerspectiveCameraBundle {
@@ -28,17 +33,18 @@ impl GameCamera {
                     .looking_at(vec3(0., 0., 0.), Vec3::Y),
                 ..Default::default()
             },
+            ..Default::default()
         }
     }
 }
 
 fn setup(mut commands: Commands) {
-    commands.spawn_bundle(GameCamera::new());
+    commands.spawn_bundle(GameCameraBundle::new());
 }
 
 fn update_camera(
     mut q: QuerySet<(
-        Query<(&Camera, &mut Transform)>,
+        Query<(&Camera, &mut Transform), With<GameCamera>>,
         Query<(&CameraAttention, &Transform)>,
     )>,
 ) {

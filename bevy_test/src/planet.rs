@@ -1,11 +1,51 @@
 use bevy::math::*;
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
+use noise::{CyclePoint, NoiseFn, Perlin};
 use std::default::Default;
-use std::f32;
 use std::time::Duration;
+use std::{f32, f64};
 
 use crate::physics_object::*;
+
+fn mesh_from_polyline(shape: &Vec<Vec2>) -> Mesh {
+    use lyon::math::{point, Point};
+    use lyon::tessellation::*;
+
+    let mut path_builder = lyon::path::Path::builder();
+    path_builder.begin(point(shape[0].x, shape[0].y));
+    for vert in shape.iter().skip(1) {
+        path_builder.line_to(point(vert.x, vert.y));
+    }
+
+    path_builder.close();
+    let path = path_builder.build();
+    // Will contain the result of the tessellation.
+    let mut geometry: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut tessellator = FillTessellator::new();
+    tessellator
+        .tessellate_path(
+            &path,
+            &FillOptions::default(),
+            &mut BuffersBuilder::new(
+                &mut geometry,
+                lyon::tessellation::geometry_builder::Positions,
+            )
+            .with_inverted_winding(),
+        )
+        .unwrap();
+
+    let indices = bevy::render::mesh::Indices::U16(geometry.indices);
+    let positions: Vec<[f32; 3]> = geometry.vertices.iter().map(|v| [v.x, v.y, 0.]).collect();
+    let normals: Vec<[f32; 3]> = geometry.vertices.iter().map(|_| [0., 0., 1.]).collect();
+    let uvs: Vec<[f32; 2]> = geometry.vertices.iter().map(|_| [0., 0.]).collect();
+    let mut mesh = Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleList);
+    mesh.set_indices(Some(indices));
+    mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.set_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.set_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    return mesh;
+}
 
 struct PlanetaryConstants {
     // Distance for gravity to falloff 50%.
@@ -30,8 +70,7 @@ impl Plugin for PlanetaryPlugin {
 }
 
 // An entity that is affected by gravity.
-pub struct Gravity
-{
+pub struct Gravity {
     pub is_active: bool,
     pub down: Vec2,
 }
@@ -44,7 +83,6 @@ impl Default for Gravity {
         }
     }
 }
-
 
 // TODO: allow phases other than periapsis at t=0
 // TODO: allow CCW orbits
@@ -150,22 +188,20 @@ pub struct Planet {
 
 #[derive(Bundle, Default)]
 pub struct PlanetBundle {
-    pub transform: Transform,
-    pub global_tranform: GlobalTransform,
-
     pub planet: Planet,
+    pub orbit: Orbit,
+
     #[bundle]
     pub physics_bundle: PhysicsObjectBundle,
 
-    pub orbit: Orbit,
+    #[bundle]
+    pub pbr_bundle: PbrBundle,
 }
 
 impl PlanetBundle {
     pub fn new(scale: f32, gravity: f32, orbit: Orbit) -> Self {
         let position = orbit.get_position(Duration::ZERO);
         Self {
-            transform: Transform::from_translation(Vec3::new(position.x, position.y, 0.)),
-            global_tranform: Default::default(),
             planet: Planet {
                 radius: scale,
                 gravity,
@@ -184,19 +220,65 @@ impl PlanetBundle {
                 position_sync: ColliderPositionSync::Discrete,
                 ..Default::default()
             },
+            pbr_bundle: Default::default(),
+        }
+    }
+
+    pub fn generate(
+        radius: f32,
+        gravity: f32,
+        mut meshs: ResMut<Assets<Mesh>>,
+        mut materials: ResMut<Assets<StandardMaterial>>,
+    ) -> Self {
+        let circum = radius * f32::consts::TAU; // 2 * PI * R
+        let nsegments = 100;//(circum / 50.).max(12.).floor();
+        let roughness = radius * 0.3; // radius will vary by +- 10%
+
+        let perlin = Perlin::default();
+        let cyclic_perlin = CyclePoint::new(perlin).set_x_period(f64::consts::TAU);
+        let mut path: Vec<Vec2> = vec![];
+        let delta = f32::consts::TAU / nsegments as f32;
+        for i in 0..(nsegments as usize) {
+            let theta = delta * i as f32;
+            let r = radius + roughness * cyclic_perlin.get([theta as f64, 0.]) as f32;
+            path.push(vec2(theta.cos() * r, theta.sin() * r));
+        }
+
+        let mesh = mesh_from_polyline(&path);
+        let shape = {
+            let points = path.iter().map(|v| Point::new(v.x, v.y)).collect();
+            SharedShape::convex_polyline(points).unwrap()
+        };
+
+        let orbit = Orbit::default();
+        let position = orbit.get_position(Duration::ZERO);
+        Self {
+            planet: Planet { radius, gravity },
+            orbit,
+            physics_bundle: PhysicsObjectBundle {
+                rigid_body: RigidBodyBundle {
+                    dominance: RigidBodyDominance(10), // planets shouldn't be pushable
+                    position: position.into(),
+                    ..Default::default()
+                },
+                collider: ColliderBundle {
+                    shape,
+                    ..Default::default()
+                },
+                position_sync: ColliderPositionSync::Discrete,
+                ..Default::default()
+            },
+            pbr_bundle: PbrBundle {
+                mesh: meshs.add(mesh),
+                material: materials.add(Color::rgb(1., 1., 1.).into()),
+                ..Default::default()
+            },
         }
     }
 }
 
 // Orbit satellite planets. Anything with an 'Orbit'.
-fn orbit_satellites(
-    time: Res<Time>,
-    mut q: Query<(
-        &Orbit,
-        &Transform,
-        &mut RigidBodyVelocity
-    )>,
-) {
+fn orbit_satellites(time: Res<Time>, mut q: Query<(&Orbit, &Transform, &mut RigidBodyVelocity)>) {
     for (orbit, planet_tf, mut rb_vel) in q.iter_mut() {
         let target_pos = orbit.get_position(time.time_since_startup());
         let delta = target_pos - planet_tf.translation.xy();
