@@ -7,5 +7,5 @@ edition = "2021"
 bevy = "0.5.0"
 bevy_rapier2d = { version = "0.11", features = ["simd-stable", "render"] }
 bevy_svg = { git = "https://github.com/Weasy666/bevy_svg", branch = "bevy-0.5" }
-noise = { git = "https://github.com/bsurmanski/noise-rs", branch = "feature/perlin1d" }
+noise = { git = "https://github.com/bsurmanski/noise-rs", branch = "feature/cyclic" }
 lyon = { git = "https://github.com/nical/lyon", rev = "094698b552"}

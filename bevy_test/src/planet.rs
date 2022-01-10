@@ -1,7 +1,6 @@
 use bevy::math::*;
 use bevy::prelude::*;
 use bevy_rapier2d::prelude::*;
-use noise::{CyclePoint, NoiseFn, Perlin};
 use std::default::Default;
 use std::time::Duration;
 use std::{f32, f64};
@@ -230,17 +229,19 @@ impl PlanetBundle {
         mut meshs: ResMut<Assets<Mesh>>,
         mut materials: ResMut<Assets<StandardMaterial>>,
     ) -> Self {
-        let circum = radius * f32::consts::TAU; // 2 * PI * R
+        use noise::{Cycle, NoiseFn, Perlin};
+
+        //let circum = radius * f32::consts::TAU; // 2 * PI * R
         let nsegments = 100;//(circum / 50.).max(12.).floor();
         let roughness = radius * 0.3; // radius will vary by +- 10%
 
         let perlin = Perlin::default();
-        let cyclic_perlin = CyclePoint::new(perlin).set_x_period(f64::consts::TAU);
+        let cyclic_perlin = Cycle::new(perlin).set_x_period(f64::consts::TAU).set_y_period(100.);
         let mut path: Vec<Vec2> = vec![];
         let delta = f32::consts::TAU / nsegments as f32;
         for i in 0..(nsegments as usize) {
             let theta = delta * i as f32;
-            let r = radius + roughness * cyclic_perlin.get([theta as f64, 0.]) as f32;
+            let r = radius + roughness * cyclic_perlin.get([theta as f64, 8.1]) as f32;
             path.push(vec2(theta.cos() * r, theta.sin() * r));
         }
 
