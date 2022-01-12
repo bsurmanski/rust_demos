@@ -1,4 +1,4 @@
-use bevy::{math::*, prelude::*};
+use bevy::{math::*, prelude::shape::Quad, prelude::*};
 use bevy_rapier2d::prelude::*;
 use std::default::Default;
 
@@ -6,31 +6,15 @@ use crate::physics_object::PhysicsObjectBundle;
 use crate::planet::Gravity;
 use crate::ship::Ship;
 
-#[derive(Default)]
-pub struct CharacterAssets {
-    sprite: Handle<ColorMaterial>,
-}
-
-fn load_assets(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    commands.insert_resource(CharacterAssets {
-        sprite: materials.add(asset_server.load("happy.png").into()),
-    });
-}
-
 pub struct CharacterPlugin;
 impl Plugin for CharacterPlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.add_startup_system_to_stage(StartupStage::PreStartup, load_assets.system())
-            .add_system(move_character.system())
-            .add_system(enter_exit_vehicle.system());
+    fn build(&self, app: &mut App) {
+        app.add_system(move_character)
+            .add_system(enter_exit_vehicle);
     }
 }
 
-#[derive(Default)]
+#[derive(Component, Default)]
 pub struct Character {
     pub active_vehicle: Option<Entity>,
 }
@@ -43,23 +27,30 @@ pub struct CharacterBundle {
     pub physics_object: PhysicsObjectBundle,
 
     #[bundle]
-    pub sprite: SpriteBundle,
+    pub pbr_bundle: PbrBundle,
 }
 
 impl CharacterBundle {
-    pub fn new(position: Vec2, assets: Res<CharacterAssets>) -> Self {
+    pub fn new(
+        position: Vec2,
+        meshs: &mut Assets<Mesh>,
+        materials: &mut Assets<StandardMaterial>,
+        asset_server: &Res<AssetServer>,
+    ) -> Self {
         let hx = 1.;
         let mut physics_object = PhysicsObjectBundle::new(ColliderShape::cuboid(hx, hx));
         physics_object.rigid_body.position = position.into();
         Self {
             physics_object,
-            sprite: SpriteBundle {
-                sprite: Sprite {
-                    size: vec2(2. * hx, 2. * hx),
-                    resize_mode: SpriteResizeMode::Manual,
-                    ..Default::default()
-                },
-                material: assets.sprite.clone(),
+            pbr_bundle: PbrBundle {
+                mesh: meshs.add(
+                    Quad {
+                        size: vec2(2. * hx, 2. * hx),
+                        flip: false,
+                    }
+                    .into(),
+                ),
+                material: materials.add(asset_server.load("happy.png").into()),
                 ..Default::default()
             },
             ..Default::default()
@@ -81,10 +72,10 @@ fn enter_exit_vehicle(
         Entity,
         &mut Character,
         &mut Transform,
-        &mut RigidBodyPosition,
-        &mut RigidBodyVelocity,
-        &mut Visible,
-        &mut ColliderFlags,
+        &mut Visibility,
+        &mut RigidBodyPositionComponent,
+        &mut RigidBodyVelocityComponent,
+        &mut ColliderFlagsComponent,
         Option<&mut Gravity>,
     )>,
     vehicles: Query<(Entity, &Ship, &Transform), Without<Character>>,
@@ -93,9 +84,9 @@ fn enter_exit_vehicle(
         char_entity,
         mut char,
         mut char_tf,
+        mut visibility,
         mut rb_pos,
         mut rb_vel,
-        mut visible,
         mut collider_flags,
         mut opt_gravity,
     ) in characters.iter_mut()
@@ -106,7 +97,7 @@ fn enter_exit_vehicle(
             if let Some(active_vehicle) = char.active_vehicle {
                 let (_, ship, ship_tf) = vehicles.get(active_vehicle).unwrap();
                 char.active_vehicle = None;
-                visible.is_visible = true;
+                visibility.is_visible = true;
                 collider_flags.collision_groups = Default::default();
                 if let Some(gravity) = opt_gravity.as_mut() {
                     gravity.is_active = true;
@@ -137,7 +128,7 @@ fn enter_exit_vehicle(
                 if let Some(closest) = closest {
                     if closest_distsq.sqrt() < 10. {
                         char.active_vehicle = Some(closest.0);
-                        visible.is_visible = false;
+                        visibility.is_visible = false;
                         collider_flags.collision_groups = InteractionGroups::none();
                         if let Some(gravity) = opt_gravity.as_mut() {
                             gravity.is_active = false;
@@ -163,7 +154,7 @@ fn move_character(
     mut characters: Query<(
         &Character,
         &Transform,
-        &mut RigidBodyVelocity,
+        &mut RigidBodyVelocityComponent,
         Option<&mut Gravity>,
     )>,
 ) {

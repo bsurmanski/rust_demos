@@ -1,5 +1,4 @@
-use bevy::math::*;
-use bevy::prelude::*;
+use bevy::{math::*, prelude::*, render::render_resource::*};
 use bevy_rapier2d::prelude::*;
 use std::default::Default;
 use std::time::Duration;
@@ -38,7 +37,7 @@ fn mesh_from_polyline(shape: &Vec<Vec2>) -> Mesh {
     let positions: Vec<[f32; 3]> = geometry.vertices.iter().map(|v| [v.x, v.y, 0.]).collect();
     let normals: Vec<[f32; 3]> = geometry.vertices.iter().map(|_| [0., 0., 1.]).collect();
     let uvs: Vec<[f32; 2]> = geometry.vertices.iter().map(|_| [0., 0.]).collect();
-    let mut mesh = Mesh::new(bevy::render::pipeline::PrimitiveTopology::TriangleList);
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
     mesh.set_indices(Some(indices));
     mesh.set_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.set_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
@@ -56,19 +55,20 @@ struct PlanetaryConstants {
 
 pub struct PlanetaryPlugin;
 impl Plugin for PlanetaryPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         let constants = PlanetaryConstants {
             gravity_falloff_ratio: 2.,
         };
 
         app.insert_resource(constants)
-            .add_system(apply_planetary_gravity.system())
-            //.add_system(dolly_planet.system())
-            .add_system(orbit_satellites.system());
+            .add_system(apply_planetary_gravity)
+            //.add_system(dolly_planet)
+            .add_system(orbit_satellites);
     }
 }
 
 // An entity that is affected by gravity.
+#[derive(Component)]
 pub struct Gravity {
     pub is_active: bool,
     pub down: Vec2,
@@ -85,7 +85,7 @@ impl Default for Gravity {
 
 // TODO: allow phases other than periapsis at t=0
 // TODO: allow CCW orbits
-#[derive(Default)]
+#[derive(Component, Default)]
 pub struct Orbit {
     // lowest point in orbit, measured from the center of the reference.
     // This is distinct from periapsis because it includes the radius of the
@@ -179,7 +179,7 @@ impl Orbit {
     }
 }
 
-#[derive(Default)]
+#[derive(Component, Default)]
 pub struct Planet {
     pub radius: f32,
     pub gravity: f32, // acceleration
@@ -208,11 +208,11 @@ impl PlanetBundle {
             orbit,
             physics_bundle: PhysicsObjectBundle {
                 rigid_body: RigidBodyBundle {
-                    dominance: RigidBodyDominance(10), // planets shouldn't be pushable
+                    dominance: RigidBodyDominance(10).into(), // planets shouldn't be pushable
                     ..Default::default()
                 },
                 collider: ColliderBundle {
-                    shape: ColliderShape::ball(scale),
+                    shape: ColliderShape::ball(scale).into(),
                     position: position.into(),
                     ..Default::default()
                 },
@@ -226,17 +226,19 @@ impl PlanetBundle {
     pub fn generate(
         radius: f32,
         gravity: f32,
-        mut meshs: ResMut<Assets<Mesh>>,
-        mut materials: ResMut<Assets<StandardMaterial>>,
+        meshs: &mut Assets<Mesh>,
+        materials: &mut Assets<StandardMaterial>,
     ) -> Self {
         use noise::{Cycle, NoiseFn, Perlin};
 
         //let circum = radius * f32::consts::TAU; // 2 * PI * R
-        let nsegments = 100;//(circum / 50.).max(12.).floor();
+        let nsegments = 100; //(circum / 50.).max(12.).floor();
         let roughness = radius * 0.3; // radius will vary by +- 10%
 
         let perlin = Perlin::default();
-        let cyclic_perlin = Cycle::new(perlin).set_x_period(f64::consts::TAU).set_y_period(100.);
+        let cyclic_perlin = Cycle::new(perlin)
+            .set_x_period(f64::consts::TAU)
+            .set_y_period(100.);
         let mut path: Vec<Vec2> = vec![];
         let delta = f32::consts::TAU / nsegments as f32;
         for i in 0..(nsegments as usize) {
@@ -258,12 +260,12 @@ impl PlanetBundle {
             orbit,
             physics_bundle: PhysicsObjectBundle {
                 rigid_body: RigidBodyBundle {
-                    dominance: RigidBodyDominance(10), // planets shouldn't be pushable
+                    dominance: RigidBodyDominance(10).into(), // planets shouldn't be pushable
                     position: position.into(),
                     ..Default::default()
                 },
                 collider: ColliderBundle {
-                    shape,
+                    shape: shape.into(),
                     ..Default::default()
                 },
                 position_sync: ColliderPositionSync::Discrete,
@@ -279,7 +281,10 @@ impl PlanetBundle {
 }
 
 // Orbit satellite planets. Anything with an 'Orbit'.
-fn orbit_satellites(time: Res<Time>, mut q: Query<(&Orbit, &Transform, &mut RigidBodyVelocity)>) {
+fn orbit_satellites(
+    time: Res<Time>,
+    mut q: Query<(&Orbit, &Transform, &mut RigidBodyVelocityComponent)>,
+) {
     for (orbit, planet_tf, mut rb_vel) in q.iter_mut() {
         let target_pos = orbit.get_position(time.time_since_startup());
         let delta = target_pos - planet_tf.translation.xy();
@@ -294,7 +299,7 @@ fn orbit_satellites(time: Res<Time>, mut q: Query<(&Orbit, &Transform, &mut Rigi
 fn apply_planetary_gravity(
     time: Res<Time>,
     constants: Res<PlanetaryConstants>,
-    mut q0: Query<(&mut RigidBodyVelocity, &Transform, &mut Gravity)>,
+    mut q0: Query<(&mut RigidBodyVelocityComponent, &Transform, &mut Gravity)>,
     q1: Query<(&Planet, &Transform)>,
 ) {
     for (mut rb_vel, rb_tf, mut gravity) in q0.iter_mut() {
@@ -318,8 +323,7 @@ fn apply_planetary_gravity(
             let attenuation = falloff_distsq / (falloff_distsq + surf_dist * surf_dist);
             gravity_vec += offset.normalize_or_zero() * planet.gravity * attenuation;
         }
-        gravity.down = gravity_vec;
-        gravity.down.normalize_or_zero();
+        gravity.down = gravity_vec.normalize_or_zero();
         gravity_vec *= time.delta_seconds();
         rb_vel.linvel += Vector::<Real>::from(gravity_vec);
     }
@@ -327,16 +331,16 @@ fn apply_planetary_gravity(
 
 fn dolly_planet(
     mut q: QuerySet<(
-        Query<(&mut Transform, &Planet)>,
-        Query<&Transform, With<crate::camera::CameraAttention>>,
+        QueryState<(&mut Transform, &Planet)>,
+        QueryState<&Transform, With<crate::camera::CameraAttention>>,
     )>,
 ) {
     let attention_tf = q
         .q1()
-        .single()
+        .get_single()
         .expect("Assume theres at least one CameraAttention.")
         .clone();
-    for (mut planet_tf, planet) in q.q0_mut().iter_mut() {
+    for (mut planet_tf, planet) in q.q0().iter_mut() {
         let dist = planet_tf
             .translation
             .xy()

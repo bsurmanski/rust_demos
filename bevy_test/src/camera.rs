@@ -5,16 +5,16 @@ use std::ops::Add;
 
 pub struct CameraPlugin;
 impl Plugin for CameraPlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.add_startup_system(setup.system())
-            .add_system(update_camera.system());
+    fn build(&self, app: &mut App) {
+        app.add_startup_system(setup)
+            .add_system(update_camera);
     }
 }
 
-#[derive(Default)]
+#[derive(Component, Default)]
 pub struct CameraAttention {}
 
-#[derive(Default)]
+#[derive(Component, Default)]
 pub struct GameCamera {}
 
 #[derive(Default, Bundle)]
@@ -44,18 +44,18 @@ fn setup(mut commands: Commands) {
 
 fn update_camera(
     mut q: QuerySet<(
-        Query<(&Camera, &mut Transform), With<GameCamera>>,
-        Query<(&CameraAttention, &Transform)>,
+        QueryState<(&Camera, &mut Transform), With<GameCamera>>,
+        QueryState<(&CameraAttention, &Transform)>,
     )>,
 ) {
     let attention_translation = q
         .q1()
-        .single()
+        .get_single()
         .expect("There should be one CameraAttention.")
         .1
         .translation
         .clone();
-    for (_, mut cam_tf) in q.q0_mut().iter_mut() {
+    for (_, mut cam_tf) in q.q0().iter_mut() {
         cam_tf.translation = attention_translation.add(vec3(0., 0., 100.));
     }
 }

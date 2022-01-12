@@ -6,12 +6,12 @@ use crate::planet::Gravity;
 
 pub struct ShipPlugin;
 impl Plugin for ShipPlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.add_system(move_active_ship.system());
+    fn build(&self, app: &mut App) {
+        app.add_system(move_active_ship);
     }
 }
 
-#[derive(Default)]
+#[derive(Component, Default)]
 pub struct Ship; // Marker Component
 
 #[derive(Bundle, Default)]
@@ -44,10 +44,10 @@ impl ShipBundle {
 fn move_active_ship(
     time: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
-    mut ship_query: Query<(&Ship, &Transform, &mut RigidBodyVelocity)>,
+    mut ship_query: Query<(&Ship, &Transform, &mut RigidBodyVelocityComponent)>,
     char_query: Query<&crate::character::Character>,
 ) {
-    let char = char_query.single().unwrap();
+    let char = char_query.single();
     if let Some(active_vehicle) = char.active_vehicle {
         match ship_query.get_mut(active_vehicle) {
             Ok((_, ship_tf, mut rb_vel)) => {

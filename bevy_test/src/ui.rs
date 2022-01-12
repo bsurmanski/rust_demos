@@ -4,14 +4,15 @@ use bevy::{
 };
 
 // A unit struct to help identify the FPS UI component, since there may be many Text components
+#[derive(Component)]
 struct FpsText;
 
 pub struct UiPlugin;
 impl Plugin for UiPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.add_plugin(FrameTimeDiagnosticsPlugin::default())
-            .add_startup_system(setup.system())
-            .add_system(text_update.system());
+            .add_startup_system(setup)
+            .add_system(text_update);
     }
 }
 

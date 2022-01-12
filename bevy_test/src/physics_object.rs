@@ -15,11 +15,11 @@ impl PhysicsObjectBundle {
     pub fn new(shape: SharedShape) -> Self {
         Self {
             collider: ColliderBundle {
-                shape,
+                shape: shape.into(),
                 material: ColliderMaterial {
                     restitution: 0.7,
                     ..Default::default()
-                },
+                }.into(),
                 ..Default::default()
             },
             position_sync: ColliderPositionSync::Discrete,
